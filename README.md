@@ -20,34 +20,29 @@ Rankings have become the primary interface of many two-sided markets. Many have 
 
 ## Requirements and Setup
 
-The Python environment is built using [poetry](https://github.com/python-poetry/poetry). You can build the same environment as in our experiments by cloning the repository and running `poetry install` directly under the folder (if you have not install poetry yet, please run `pip install poetry` first).
-
 ```bash
 # clone the repository
 git clone https://github.com/usaito/kdd2022-fair-ranking-nsw.git
 cd src
 
-# install poetry
-pip install poetry
-
-# build the environment with poetry
-poetry install
 ```
 
-The versions of Python and necessary packages are as follows (from [pyproject.toml](./pyproject.toml)).
+Create virtual environment with conda
+```
+conda create -n agm python=3.9
+conda activate agm
+```
 
+Install required packages
 ```
-[tool.poetry.dependencies]
-python = ">=3.9,<3.11"
-numpy = "1.21.4"
-pandas = "1.3.4"
-seaborn = "^0.11.2"
-matplotlib = "^3.5.2"
-cvxpy = "1.1.17"
-hydra-core = "1.0.7"
-Cython = "0.29.24"
-scikit-learn = "1.0.1"
+pip install -r requirements.txt
 ```
+
+Since `cvxpy` cannot be installed using pip on Macbook with M1 chip, it can be installed using the following comman. For other OS, this command should work too. 
+```
+conda install -c conda-forge cvxpy
+```
+
 
 We also use [`pyxclib`](https://github.com/kunaldahiya/pyxclib) to handle extreme classification data. This tool cannot be installed via `pip`, so please build this tool as follows.
 
@@ -55,7 +50,7 @@ We also use [`pyxclib`](https://github.com/kunaldahiya/pyxclib) to handle extrem
 git clone https://github.com/kunaldahiya/pyxclib.git
 cd pyxclib
 
-poetry run python setup.py install
+python setup.py install
 ```
 
 ## Datasets
@@ -88,23 +83,23 @@ The commands needed to reproduce the experiment of each section are summarized b
 ```bash
 
 # varying lambda (Figures 1 and 2)
-poetry run python synthetic/main_lam.py
+python synthetic/main_lam.py
 
 # varying noise level (Figure 3)
-poetry run python synthetic/main_noise.py
+python synthetic/main_noise.py
 
 # varying K (Figure 5)
-poetry run python synthetic/main_k.py
+python synthetic/main_k.py
 
 # varying number of items (Figure 6)
-poetry run python synthetic/main_n_doc.py
+python synthetic/main_n_doc.py
 
 # varying number of items (Figure 7)
-poetry run python synthetic/main_lam.py setting.exam_func=exp
+python synthetic/main_lam.py setting.exam_func=exp
 ```
 
 ### Real-World Data (Section 5.2 and Appendix)
 
 ```bash
-poetry run python real/main.py setting.dataset=d,w -m
+run python real/main.py setting.dataset=d,w -m
 ```

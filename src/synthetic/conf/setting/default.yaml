@@ -12,10 +12,10 @@ default_K: 5
 # varying configs
 K_list:
   - 1
-  - 3
-  - 5
-  - 10
-  - 20
+  # - 3
+  # - 5
+  # - 10
+  # - 20
 n_doc_list:
   - 10
   - 50
