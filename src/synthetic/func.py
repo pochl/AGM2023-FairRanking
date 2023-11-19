@@ -172,6 +172,106 @@ def compute_pi_nsw(
     return pi
 
 
+def compute_pi_nsw_lag1(
+    rel_mat: np.ndarray,
+    v: np.ndarray,
+    alpha: float = 0.0,
+) -> np.ndarray:
+    n_query, n_doc = rel_mat.shape  # n_query = U, n_doc = I
+    K = v.shape[0]
+    query_basis = np.ones((n_query, 1))
+    am_rel = rel_mat.sum(0) ** alpha
+
+    # instead of having 3 dims (u,i,k) of pi, they use 2 dim (u, (i,k)) of pi.
+    # So for first user (first row), pi of item 1 will be from 0 -> K-1 index,
+    # pi of item 1 will be from K -> 2K-1 index, and so on.
+    pi = cvx.Variable((n_query, n_doc * K))
+    lmda = cvx.Variable((n_query, n_doc))
+    obj = 0.0
+    constraints = []
+    for d in np.arange(n_doc):
+        obj += am_rel[d] * cvx.log(rel_mat[:, d] @ pi[:, K * d : K * (d + 1)] @ v)
+        
+        basis_ = np.zeros(n_doc * K)
+        basis_[K * d : K * (d + 1)] = 1
+        obj += cvx.sum(cvx.multiply(lmda[:, d], (1 - pi @ basis_)))
+        # basis_ are 1 only for elements corresponding to all ranks for item d. 
+        # Thus, pi @ basis_ yields U elements of summing pi over k.
+        # We then multiply lmda[:, d] and (1 - pi @ basis_) elementwise and sum all elements
+        # to yield the summation of lagrangian term over U. 
+
+    # feasible allocation
+    for k in np.arange(K):
+        basis_ = np.zeros((n_doc * K, 1))
+        basis_[np.arange(n_doc) * K + k] = 1
+        constraints += [pi @ basis_ <= query_basis]
+        # basis_ are 1 only for elements corresponding to all items for rank k.
+        # Thus, pi @ basis_ yields U elements of summing pi over i.
+        # Hence, this loop produces second constraint
+
+    constraints += [pi <= 1.0]
+    constraints += [0.0 <= pi]
+    constraints += [0.0 <= lmda]
+
+    prob = cvx.Problem(cvx.Maximize(obj), constraints)
+    prob.solve(solver=cvx.SCS)
+
+    pi = pi.value.reshape((n_query, n_doc, K))
+    pi = np.clip(pi, 0.0, 1.0)
+
+    return pi
+
+
+def compute_pi_nsw_lag2(
+    rel_mat: np.ndarray,
+    v: np.ndarray,
+    alpha: float = 0.0,
+) -> np.ndarray:
+    n_query, n_doc = rel_mat.shape  # n_query = U, n_doc = I
+    K = v.shape[0]
+    query_basis = np.ones((n_query, 1))
+    am_rel = rel_mat.sum(0) ** alpha
+
+    # instead of having 3 dims (u,i,k) of pi, they use 2 dim (u, (i,k)) of pi.
+    # So for first user (first row), pi of item 1 will be from 0 -> K-1 index,
+    # pi of item 1 will be from K -> 2K-1 index, and so on.
+    pi = cvx.Variable((n_query, n_doc * K))
+    lmda = cvx.Variable((n_query, n_doc))
+    obj = 0.0
+    constraints = []
+    for d in np.arange(n_doc):
+        obj += am_rel[d] * cvx.log(rel_mat[:, d] @ pi[:, K * d : K * (d + 1)] @ v)
+        # feasible allocation
+        basis_ = np.zeros((n_doc * K, 1))
+        basis_[K * d : K * (d + 1)] = 1
+        constraints += [pi @ basis_ <= query_basis]
+        # basis_ are 1 only for elements corresponding to all ranks for item d. 
+        # Thus, pi @ basis_ yields U elements of summing pi over k.
+        # Hence, this loop produces first constraint
+
+    # feasible allocation
+    for k in np.arange(K):
+        basis_ = np.zeros((n_doc * K))
+        basis_[np.arange(n_doc) * K + k] = 1
+        obj += cvx.sum(cvx.multiply(lmda[:, d], (1 - pi @ basis_)))
+        # basis_ are 1 only for elements corresponding to all items for rank k.
+        # Thus, pi @ basis_ yields U elements of summing pi over i.
+        # We then multiply lmda[:, d] and (1 - pi @ basis_) elementwise and sum all elements
+        # to yield the summation of lagrangian term over U. 
+
+    constraints += [pi <= 1.0]
+    constraints += [0.0 <= pi]
+    constraints += [0.0 <= lmda]
+
+    prob = cvx.Problem(cvx.Maximize(obj), constraints)
+    prob.solve(solver=cvx.SCS)
+
+    pi = pi.value.reshape((n_query, n_doc, K))
+    pi = np.clip(pi, 0.0, 1.0)
+
+    return pi
+
+
 def compute_pi_unif(rel_mat: np.ndarray, v: np.ndarray) -> np.ndarray:
     n_query, n_doc = rel_mat.shape
     K = v.shape[0]
