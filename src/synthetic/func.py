@@ -185,16 +185,18 @@ def compute_pi_nsw_lag1(
     # instead of having 3 dims (u,i,k) of pi, they use 2 dim (u, (i,k)) of pi.
     # So for first user (first row), pi of item 1 will be from 0 -> K-1 index,
     # pi of item 1 will be from K -> 2K-1 index, and so on.
-    pi = cvx.Variable((n_query, n_doc * K))
-    lmda = cvx.Variable((n_query, n_doc))
+    pi = cvx.Variable((n_query, n_doc * K), pos=True)
+    lmda = cvx.Variable((n_query, n_doc), pos=True)
     obj = 0.0
+    lagrang = 0.0
     constraints = []
     for d in np.arange(n_doc):
         obj += am_rel[d] * cvx.log(rel_mat[:, d] @ pi[:, K * d : K * (d + 1)] @ v)
         
-        basis_ = np.zeros(n_doc * K)
+        basis_ = np.zeros((n_doc * K))
         basis_[K * d : K * (d + 1)] = 1
-        obj += cvx.sum(cvx.multiply(lmda[:, d], (1 - pi @ basis_)))
+        lagrang += cvx.sum(cvx.multiply(lmda[:, d], (1 - pi @ basis_)))  # Lagrangian term
+        print(lagrang.curvature)  # Currently output UNKNOWN, Need CONCAVE for the solver to work
         # basis_ are 1 only for elements corresponding to all ranks for item d. 
         # Thus, pi @ basis_ yields U elements of summing pi over k.
         # We then multiply lmda[:, d] and (1 - pi @ basis_) elementwise and sum all elements
@@ -213,7 +215,7 @@ def compute_pi_nsw_lag1(
     constraints += [0.0 <= pi]
     constraints += [0.0 <= lmda]
 
-    prob = cvx.Problem(cvx.Maximize(obj), constraints)
+    prob = cvx.Problem(cvx.Maximize(obj + lagrang), constraints)
     prob.solve(solver=cvx.SCS)
 
     pi = pi.value.reshape((n_query, n_doc, K))
