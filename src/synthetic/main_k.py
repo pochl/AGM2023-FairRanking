@@ -5,6 +5,8 @@ from time import time
 from func import compute_pi_expo_fair
 from func import compute_pi_max
 from func import compute_pi_nsw
+from func import compute_pi_nsw_lag1
+from func import compute_pi_nsw_lag2
 from func import compute_pi_unif
 from func import evaluate_pi
 from func import exam_func
@@ -28,7 +30,7 @@ def main(cfg: DictConfig) -> None:
     # configurations
     n_doc = cfg.setting.n_doc
     K_list = cfg.setting.K_list
-    pol_list = ["max", "expo-fair", "nsw", "unif"]
+    pol_list = ["unif", "max", "expo-fair", "nsw", "nsw_1"]
     result_df = DataFrame(
         columns=[
             "policy",
@@ -62,90 +64,59 @@ def main(cfg: DictConfig) -> None:
                 random_state=s,
             )
 
-            # uniform
-            pi_unif = compute_pi_unif(rel_mat=rel_mat_obs, v=v)
-            user_util_unif, item_utils_unif, max_envies_unif, _ = evaluate_pi(
-                pi=pi_unif,
-                rel_mat=rel_mat_true,
-                v=v,
-            )
+            item_utils_unif = None
+            user_util_list = []
+            mean_max_envy_list = []
+            pct_item_util_better_off_list = []
+            pct_item_util_worse_off_list = []
 
-            # max
-            pi_max = compute_pi_max(rel_mat=rel_mat_obs, v=v)
-            user_util_max, item_utils_max, max_envies_max, _ = evaluate_pi(
-                pi=pi_max,
-                rel_mat=rel_mat_true,
-                v=v,
-            )
-            result_max = DataFrame(
-                data={
-                    "policy": ["Max"] * n_doc,
-                    "item_util": item_utils_max,
-                    "max_envy": max_envies_max,
-                    "imp_in_item_util": item_utils_max / item_utils_unif,
-                }
-            )
-            result_df_box = pd.concat([result_df_box, result_max])
+            for pol in pol_list:
 
-            # exposure-based fair
-            pi_expo_fair = compute_pi_expo_fair(rel_mat=rel_mat_obs, v=v)
-            user_util_expo, item_utils_expo, max_envies_expo, _ = evaluate_pi(
-                pi=pi_expo_fair,
-                rel_mat=rel_mat_true,
-                v=v,
-            )
-            result_expo_fair = DataFrame(
-                data={
-                    "policy": ["Expo-Fair"] * n_doc,
-                    "item_util": item_utils_expo,
-                    "max_envy": max_envies_expo,
-                    "imp_in_item_util": item_utils_expo / item_utils_unif,
-                }
-            )
-            result_df_box = pd.concat([result_df_box, result_expo_fair])
+                if pol == "max":
+                    opt = compute_pi_max
+                elif pol == "expo-fair":
+                    opt = compute_pi_expo_fair
+                elif pol == "nsw":
+                    opt = compute_pi_nsw
+                elif pol == "unif":
+                    opt = compute_pi_unif
+                elif pol == "nsw_1":
+                    opt = compute_pi_nsw_lag1
+                elif pol == "nsw_2":
+                    opt = compute_pi_nsw_lag2
+                else:
+                    raise ValueError("Invalid pol")
+                
+                pi = opt(rel_mat=rel_mat_obs, v=v)
+                user_util, item_utils, max_envies, _ = evaluate_pi(
+                    pi=pi,
+                    rel_mat=rel_mat_true,
+                    v=v,
+                )
 
-            # nash social welfare
-            pi_nsw = compute_pi_nsw(rel_mat=rel_mat_obs, v=v)
-            user_util_nsw, item_utils_nsw, max_envies_nsw, _ = evaluate_pi(
-                pi=pi_nsw,
-                rel_mat=rel_mat_true,
-                v=v,
-            )
-            result_nsw = DataFrame(
-                data={
-                    "policy": ["NSW"] * n_doc,
-                    "item_util": item_utils_nsw,
-                    "max_envy": max_envies_nsw,
-                    "imp_in_item_util": item_utils_nsw / item_utils_unif,
-                }
-            )
-            result_df_box = pd.concat([result_df_box, result_nsw])
+                if pol == "unif":
+                    item_utils_unif = item_utils
+                else:
+                    result_pol = DataFrame(
+                        data={
+                            "policy": [pol] * n_doc,
+                            "item_util": item_utils,
+                            "max_envy": max_envies,
+                            "imp_in_item_util": item_utils / item_utils_unif,
+                        }
+                    )
 
-            # aggregate results
-            user_util_list = [
-                user_util_max,
-                user_util_expo,
-                user_util_nsw,
-                user_util_unif,
-            ]
-            mean_max_envy_list = [
-                max_envies_max.mean(),
-                max_envies_expo.mean(),
-                max_envies_nsw.mean(),
-                -10,  # always zero, but to remove from the figure
-            ]
-            pct_item_util_better_off_list = [
-                100 * ((item_utils_max / item_utils_unif) > 1.10).mean(),
-                100 * ((item_utils_expo / item_utils_unif) > 1.10).mean(),
-                100 * ((item_utils_nsw / item_utils_unif) > 1.10).mean(),
-                -10,  # always one, but to remove from the figure
-            ]
-            pct_item_util_worse_off_list = [
-                100 * ((item_utils_max / item_utils_unif) < 0.90).mean(),
-                100 * ((item_utils_expo / item_utils_unif) < 0.90).mean(),
-                100 * ((item_utils_nsw / item_utils_unif) < 0.90).mean(),
-                -10,  # always one, but to remove from the figure
-            ]
+                    result_df_box = pd.concat([result_df_box, result_pol])
+
+                user_util_list.append(user_util)
+                mean_max_envy_list.append(max_envies.mean())
+                pct_item_util_better_off_list.append(
+                    100 * ((item_utils / item_utils_unif) > 1.10).mean()
+                )
+                pct_item_util_worse_off_list.append(
+                    100 * ((item_utils / item_utils_unif) < 0.90).mean()
+                )
+
 
             result_df_ = DataFrame(
                 data={
