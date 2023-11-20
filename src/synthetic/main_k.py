@@ -6,7 +6,6 @@ from func import compute_pi_expo_fair
 from func import compute_pi_max
 from func import compute_pi_nsw
 from func import compute_pi_nsw_lag1
-from func import compute_pi_nsw_lag2
 from func import compute_pi_unif
 from func import evaluate_pi
 from func import exam_func
@@ -82,8 +81,6 @@ def main(cfg: DictConfig) -> None:
                     opt = compute_pi_unif
                 elif pol == "nsw_1":
                     opt = compute_pi_nsw_lag1
-                elif pol == "nsw_2":
-                    opt = compute_pi_nsw_lag2
                 else:
                     raise ValueError("Invalid pol")
                 
