@@ -2,6 +2,7 @@ import cvxpy as cvx
 import numpy as np
 from scipy.stats import rankdata
 from sklearn.utils import check_random_state
+from tqdm import tqdm
 
 
 def synthesize_rel_mat(
@@ -176,7 +177,18 @@ def compute_pi_nsw_lag1(
     rel_mat: np.ndarray,
     v: np.ndarray,
     alpha: float = 0.0,
+    max_iter: int = 10,
+    verbose: bool = False
 ) -> np.ndarray:
+    """Computes pi for modified NSW problem where Lagrangian multiplier method is applied
+    to the first constraint. The Lagrangian method is done via gradient ascent, following
+    the official example from CVXPY's webpage (https://www.cvxpy.org/examples/applications/MM.html).
+
+    Since method from CVXPY's webpage only works when the Lagrangified constraint is an equality constraint,
+    we convert our first constraint from inequality to equality by introducing slack variables.
+    We also get rid off the lambda >= 0 constraint lambda is free for equality constraint. 
+    """
+
     n_query, n_doc = rel_mat.shape  # n_query = U, n_doc = I
     K = v.shape[0]
     query_basis = np.ones((n_query, 1))
@@ -185,22 +197,25 @@ def compute_pi_nsw_lag1(
     # instead of having 3 dims (u,i,k) of pi, they use 2 dim (u, (i,k)) of pi.
     # So for first user (first row), pi of item 1 will be from 0 -> K-1 index,
     # pi of item 1 will be from K -> 2K-1 index, and so on.
-    pi = cvx.Variable((n_query, n_doc * K), pos=True)
-    lmda = cvx.Variable((n_query, n_doc), pos=True)
+    pi = cvx.Variable((n_query, n_doc * K))
+    slack = cvx.Variable((n_query, n_doc))
+    lmda = cvx.Parameter((n_query, n_doc))
+    lmda.value = np.zeros((n_query, n_doc))
+
     obj = 0.0
-    lagrang = 0.0
     constraints = []
+    resids = []
+    rho = 1
+
     for d in np.arange(n_doc):
         obj += am_rel[d] * cvx.log(rel_mat[:, d] @ pi[:, K * d : K * (d + 1)] @ v)
         
         basis_ = np.zeros((n_doc * K))
         basis_[K * d : K * (d + 1)] = 1
-        lagrang += cvx.sum(cvx.multiply(lmda[:, d], (1 - pi @ basis_)))  # Lagrangian term
-        print(lagrang.curvature)  # Currently output UNKNOWN, Need CONCAVE for the solver to work
+        resids.append(pi @ basis_ + slack[:, d] - 1)  # we create residules for each item
         # basis_ are 1 only for elements corresponding to all ranks for item d. 
         # Thus, pi @ basis_ yields U elements of summing pi over k.
-        # We then multiply lmda[:, d] and (1 - pi @ basis_) elementwise and sum all elements
-        # to yield the summation of lagrangian term over U. 
+        # Hence, this loop produces first constraint
 
     # feasible allocation
     for k in np.arange(K):
@@ -213,10 +228,19 @@ def compute_pi_nsw_lag1(
 
     constraints += [pi <= 1.0]
     constraints += [0.0 <= pi]
-    constraints += [0.0 <= lmda]
+    constraints += [0.0 <= slack]
 
-    prob = cvx.Problem(cvx.Maximize(obj + lagrang), constraints)
-    prob.solve(solver=cvx.SCS)
+    lagr = 0
+    for d in np.arange(n_doc):
+        lagr -= lmda[:, d] @ resids[d]
+        lagr -= (rho/2)*cvx.sum_squares(resids[d])
+
+    iterator = tqdm(range(max_iter)) if verbose else range(max_iter)
+    for _ in iterator:
+        prob = cvx.Problem(cvx.Maximize(obj + lagr), constraints)
+        prob.solve(solver=cvx.SCS)
+        for d in np.arange(n_doc):
+            lmda.value[:, d] += resids[d].value
 
     pi = pi.value.reshape((n_query, n_doc, K))
     pi = np.clip(pi, 0.0, 1.0)
@@ -229,3 +253,21 @@ def compute_pi_unif(rel_mat: np.ndarray, v: np.ndarray) -> np.ndarray:
     K = v.shape[0]
 
     return np.ones((n_query, n_doc, K)) / n_doc
+
+
+def compute_obj_val(pi: np.ndarray,
+                    rel_mat: np.ndarray,
+                    v: np.ndarray,
+                    alpha: float = 0.0,):
+
+    n_query, n_doc = rel_mat.shape
+    am_rel = rel_mat.sum(0) ** alpha
+    K = v.shape[0]
+
+    pi = pi.reshape((n_query, n_doc*K))
+
+    obj = 0
+    for d in np.arange(n_doc):
+        obj += am_rel[d] * np.log(rel_mat[:, d] @ pi[:, K * d : K * (d + 1)] @ v)
+
+    return obj[0]
