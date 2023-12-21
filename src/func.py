@@ -165,12 +165,15 @@ def compute_pi_nsw(
     constraints += [0.0 <= pi]
 
     prob = cvx.Problem(cvx.Maximize(obj), constraints)
-    prob.solve(solver=cvx.SCS)
+    prob.solve(solver=cvx.SCS)  # CLARABEL
 
     pi = pi.value.reshape((n_query, n_doc, K))
     pi = np.clip(pi, 0.0, 1.0)
 
-    return pi
+    cons1_duals = np.array([cons.dual_value.flatten() for cons in constraints[:n_doc]])
+    cons2_duals = np.array([cons.dual_value.flatten() for cons in constraints[n_doc:n_doc+K]])
+
+    return pi, cons1_duals, cons2_duals
 
 
 def compute_pi_nsw_lag1(
